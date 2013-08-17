@@ -1,0 +1,7 @@
+
+*.make
+Makefile
+
+interim/
+lib/
+bin/
