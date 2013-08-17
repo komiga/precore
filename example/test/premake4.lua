@@ -1,20 +1,22 @@
 
 function make_test(group, name, fileglob)
-	precore.make_project(
+	local pc_proj = precore.make_project(
 		group .. "_" .. name,
 		"C++", "ConsoleApp",
-		"./", "interm/"
+		"./", "obj/",
+		nil, nil
 	)
 
-	configuration()
-		includedirs(
-			precore.subst("${ROOT}/include")
-		)
-		files(fileglob)
-
+	configuration {}
 		targetname(name)
-		libdirs("${ROOT}/lib")
-		links("example_lib")
+
+		includedirs {
+			precore.subst("${ROOT}/include")
+		}
+		files {fileglob}
+
+		libdirs {precore.subst("${ROOT}/lib")}
+		links {"magic"}
 end
 
 function make_tests(group, tests)
@@ -22,5 +24,11 @@ function make_tests(group, tests)
 		make_test(group, name, fileglob)
 	end
 end
+
+precore.make_solution(
+	"test_solution",
+	{"debug", "release"},
+	{"x32", "x64"}
+)
 
 include("general")

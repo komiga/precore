@@ -9,10 +9,10 @@ precore.make_config("example_config", {
 			print("from example_config at init()")
 		end,
 		solution = function(sol)
-			print("from example_config at solution '" .. sol.name .. "'")
+			print("from example_config at solution '" .. sol.obj.name .. "'")
 		end,
 		project = function(proj)
-			print("from example_config at project '" .. proj.name .. "'")
+			print("from example_config at project '" .. proj.obj.name .. "'")
 		end
 	},
 	function()
@@ -22,13 +22,9 @@ precore.make_config("example_config", {
 
 precore.make_config("example_generic_project_config", {
 	function()
-		configuration()
-			includedirs(
-				"include"
-			)
-			files(
-				"src/**.cpp"
-			)
+		configuration {}
+			includedirs {"include"}
+			files {"src/**.cpp"}
 	end
 })
 
@@ -38,8 +34,10 @@ precore.init(
 
 	-- precore configs
 	{
-		"c++11-core",
 		"opt-clang",
+		"c++11-core",
+		"precore-env-root",
+		"precore-generic",
 		"example_config"
 	}
 )
@@ -54,11 +52,8 @@ precore.make_solution(
 	-- platforms
 	{"x32", "x64"},
 
-	-- env
-	nil,
-
-	-- precore configs
-	nil
+	-- env, precore configs
+	nil, nil
 )
 
 precore.make_project(
@@ -69,29 +64,31 @@ precore.make_project(
 	"C++", "StaticLib",
 
 	-- target and obj dirs
-	"lib/", "interm/",
+	"lib/", "obj/",
 
-	-- env
-	nil,
-
-	-- precore configs
-	nil
+	-- env, precore configs
+	nil, nil
 )
 
--- Could just as easily be placed in make_project()
+--[[
+	premake tries to reference by project when linking -- even cross-
+	solution. Since test/ is a separate solution, we can't link to
+	the example_lib project by its name, so we'll rename the build
+	target.
+--]]
+configuration {}
+	targetname("magic")
+
+-- Can also be passed to make_project()
 precore.apply("example_generic_project_config")
 
 include("test")
 
-
-print(
-	"global: " .. precore.state.env["ROOT"] .. "\n" ..
-	"solution: " .. precore.active_solution().env["ROOT"]
-)
-
-for name, pc_proj in pairs(precore.active_solution().projects) do
-	print(
-		"project '" .. name .. "': '" .. pc_proj.env["ROOT"] ..
-		"' with basedir: '" .. pc_proj.obj.basedir .. "'"
-	)
+-- For ultimate pedantry, ensure objdir is obliterated
+if "clean" == _ACTION then
+	for _, pc_sol in pairs(precore.state.solutions) do
+		for _, pc_proj in pairs(pc_sol.projects) do
+			os.rmdir(path.join(pc_proj.obj.basedir, "obj"))
+		end
+	end
 end

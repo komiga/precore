@@ -2,6 +2,6 @@
 make_tests(
 	"general",
 	{
-		magic = {"magic.cpp"}
+		["magic"] = {"magic.cpp"}
 	}
 )

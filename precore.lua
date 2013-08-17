@@ -71,22 +71,6 @@ function precore.internal.do_subst(str, env)
 	return string.gsub(str, "%${(%w+)}", env)
 end
 
-function precore.internal.put_env_root(env, parent_env, default_dir, relative)
-	if nil == env["ROOT"] then
-		if
-			true == relative and
-			nil ~= parent_env["ROOT"]
-		then
-			env["ROOT"] = path.getrelative(
-				default_dir,
-				parent_env["ROOT"]
-			)
-		else
-			env["ROOT"] = default_dir
-		end
-	end
-end
-
 function precore.internal.execute_func_block(func, kind, scope_kind)
 	assert(
 		"function" == type(func)
@@ -99,15 +83,15 @@ function precore.internal.execute_func_block(func, kind, scope_kind)
 		execute = (scope_kind == ConfigScopeKind.global)
 	elseif kind == SubBlockFunctionKind.solution then
 		execute = (scope_kind == ConfigScopeKind.solution)
-		obj = solution()
+		obj = precore.active_solution()
 	elseif kind == SubBlockFunctionKind.project then
 		execute = (scope_kind == ConfigScopeKind.project)
-		obj = project()
+		obj = precore.active_project()
 	elseif kind == SubBlockFunctionKind.non_global then
 		execute = (scope_kind ~= ConfigScopeKind.global)
 	else
 		error(
-			"unexpected function kind: '" .. kind .. "'"
+			"unexpected function kind: '" .. tostring(kind) .. "'"
 		)
 	end
 
@@ -252,7 +236,7 @@ end
 
 --[[
 	Substitute substrings in the form "${NAME}" with their respective
-	values from the given environment table, the active project
+	values from the given substitution table, the active project
 	table, the active solution table, and the global table, in that
 	order.
 
@@ -273,7 +257,14 @@ function precore.subst(str, env)
 		str = precore.internal.do_subst(str, pc_sol.env)
 	end
 
-	return precore.internal.do_subst(str, precore.state.env)
+	--[[
+		NB: do_subst returns gsub values, which is (str, repcount).
+		Because this will generally be passed straight to list-taking
+		premake functions, we don't want to leak that number in the
+		return.
+	--]]
+	str = precore.internal.do_subst(str, precore.state.env)
+	return str
 end
 
 --[[
@@ -319,13 +310,13 @@ end
 
 	- solution
 
-		A function taking (sol) to be executed only at the solution
-		level.
+		A function to be executed only at the solution level, taking
+		as argument the active precore solution.
 
 	- project
 
-		A function taking (proj) to be executed only at the project
-		level.
+		A function to be executed only at the project level, taking
+		as argument the active precore project.
 --]]
 function precore.make_config(name, block)
 	if nil ~= precore.configs[name] then
@@ -342,10 +333,9 @@ end
 	Initialize precore.
 
 	'env' is an optional table of substitutions for the global scope.
-	Solutions and projects have their own substitution tables.
-
-	If 'env' does not contain a key named "ROOT", it is defined
-	to the current directory.
+	Solutions and projects have their own substitution tables, but
+	can still access the global substitution table. For resolution
+	order, see precore.subst().
 
 	'...' is a vararg string list or table of precore config names to
 	enable globally. All of these propagate to solutions and projects.
@@ -364,13 +354,6 @@ function precore.init(env, ...)
 	if nil ~= env then
 		precore.state.env = env
 	end
-
-	precore.internal.put_env_root(
-		precore.state.env,
-		nil,
-		os.getcwd(),
-		false
-	)
 
 	if nil ~= ... then
 		precore.internal.configure(
@@ -393,17 +376,14 @@ end
 	'plats' is a table of platform names to enable.
 
 	'env' is an optional table of substitutions for the solution
-	scope. If 'env' does not contain a key named "ROOT", it is defined
-	to the solution's basedir relative to the global "ROOT" value, or
-	to the solution's basedir if the global substitution table does
-	not have "ROOT".
+	scope.
 
 	'...' is a vararg string list or table of precore config names to
 	enable on the solution. These are executed after propagation from
 	the global configs.
 
-	Returns the new premake solution, which will also be the active
-	solution.
+	Returns the new precore solution; the new premake solution will
+	be active.
 --]]
 function precore.make_solution(name, configs, plats, env, ...)
 	precore.internal.init_guard()
@@ -442,13 +422,6 @@ function precore.make_solution(name, configs, plats, env, ...)
 		pc_sol.env = env
 	end
 
-	precore.internal.put_env_root(
-		pc_sol.env,
-		precore.state.env,
-		pc_sol.obj.basedir,
-		true
-	)
-
 	precore.internal.configure(
 		pc_sol.configs,
 		precore.state.configs,
@@ -463,7 +436,7 @@ function precore.make_solution(name, configs, plats, env, ...)
 		)
 	end
 
-	return pc_sol.obj
+	return pc_sol
 end
 
 --[[
@@ -471,26 +444,27 @@ end
 
 	Defaults the configuration to:
 
-		targetname(name)
-		targetdir(target_dir)
-		objdir(obj_dir)
+		language(lang)
 
-	If target_dir or obj_dir are nil, they are not set.
+		configuration {}
+			kind(knd)
+			targetname(name)
+			targetdir(target_dir)
+			objdir(obj_dir)
+
+	If 'target_dir' or 'obj_dir' are nil, they are not set.
 
 	'env' is an optional table of substitutions for the project
-	scope. If 'env' does not contain a key named "ROOT", it is defined
-	to the project's basedir relative to the global-scope "ROOT"
-	value, or to the project's basedir if the global substitution
-	table does not have "ROOT".
+	scope.
 
 	'...' is a vararg string list or table of precore config names to
 	enable on the project. These are executed after propagation from
 	the global configs.
 
-	Returns the new premake project, which will also be the active
-	project.
+	Returns the new precore project; the new premake project will be
+	active.
 --]]
-function precore.make_project(name, lang, kind, target_dir, obj_dir, env, ...)
+function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 	precore.internal.init_guard()
 
 	local pc_sol = precore.active_solution()
@@ -511,7 +485,7 @@ function precore.make_project(name, lang, kind, target_dir, obj_dir, env, ...)
 	assert(
 		"string" == type(name),
 		"string" == type(lang),
-		"string" == type(kind),
+		"string" == type(knd),
 		"string" == type(target_dir),
 		"string" == type(obj_dir),
 		(nil == env or "table" == type(env))
@@ -525,10 +499,10 @@ function precore.make_project(name, lang, kind, target_dir, obj_dir, env, ...)
 		obj = project(name)
 	}
 
-	pc_proj.obj.language = lang
-	pc_proj.obj.kind = kind
+	language(lang)
 
-	configuration()
+	configuration {}
+		kind(knd)
 		targetname(name)
 		if nil ~= target_dir then
 			targetdir(target_dir)
@@ -542,13 +516,6 @@ function precore.make_project(name, lang, kind, target_dir, obj_dir, env, ...)
 	if nil ~= env then
 		pc_proj.env = env
 	end
-
-	precore.internal.put_env_root(
-		pc_proj.env,
-		precore.state.env,
-		pc_proj.obj.basedir,
-		true
-	)
 
 	precore.internal.configure(
 		pc_proj.configs,
@@ -564,7 +531,7 @@ function precore.make_project(name, lang, kind, target_dir, obj_dir, env, ...)
 		)
 	end
 
-	return pc_proj.obj
+	return pc_proj
 end
 
 --[[
@@ -578,8 +545,7 @@ end
 	order of activeness, or, if no project or solution is active,
 	globally.
 
-	Any existing objects will not receive the configs of the parent
-	scope.
+	Any existing children of the scope will not receive these configs.
 --]]
 function precore.apply(...)
 	local pc_obj = precore.active_project()
@@ -603,6 +569,96 @@ function precore.apply(...)
 	end
 end
 
+function precore.internal.put_env_root(env, parent_env, default_dir, relative)
+	if nil == env["ROOT"] then
+		if
+			true == relative and
+			nil ~= parent_env["ROOT"] and
+			0 ~= #parent_env["ROOT"]
+		then
+			env["ROOT"] = path.getrelative(
+				default_dir,
+				parent_env["ROOT"]
+			)
+		else
+			env["ROOT"] = default_dir
+		end
+	end
+end
+
+--[[
+	Defines the substitution key "ROOT" according to scope.
+
+	At each scope, the following occurs only if "ROOT" is not defined
+	in its substitution table.
+
+	At the global scope, defines "ROOT" to the current working
+	directory.
+
+	At the solution and project scopes, defines "ROOT" to the object's
+	basedir property relative to the global "ROOT" value, or simply to
+	the object's basedir property if the global substitution table
+	either does not have "ROOT" or "ROOT" is an empty string.
+--]]
+precore.make_config("precore-env-root", {
+	{
+		init = function()
+			precore.internal.put_env_root(
+				precore.state.env,
+				nil,
+				os.getcwd(),
+				false
+			)
+		end,
+		solution = function(pc_sol)
+			precore.internal.put_env_root(
+				pc_sol.env,
+				precore.state.env,
+				pc_sol.obj.basedir,
+				true
+			)
+		end,
+		project = function(pc_proj)
+			precore.internal.put_env_root(
+				pc_proj.env,
+				precore.state.env,
+				pc_proj.obj.basedir,
+				true
+			)
+		end
+	}
+})
+
+--[[
+	Generic configuration for debug and release configurations.
+
+	Enables ExtraWarnings flag globally.
+
+	Enables the following for the "debug" configuration:
+
+		- flags: Symbols
+		- defines: DEBUG, _DEBUG
+
+	Enables the following for the "release" configuration:
+
+		- flags: Optimize
+		- defines: NDEBUG
+--]]
+precore.make_config("precore-generic", {
+	function()
+		configuration {"debug"}
+			flags {"Symbols"}
+			defines {"DEBUG", "_DEBUG"}
+
+		configuration {"release"}
+			flags {"Optimize"}
+			defines {"NDEBUG"}
+
+		configuration {}
+			flags {"ExtraWarnings"}
+	end
+})
+
 --[[
 	Core C++11 config.
 
@@ -612,8 +668,8 @@ end
 --]]
 precore.make_config("c++11-core", {
 	function()
-		configuration("linux or macosx")
-			buildoptions("-std=c++11")
+		configuration {"linux or macosx"}
+			buildoptions {"-std=c++11"}
 	end
 })
 
@@ -654,8 +710,8 @@ precore.make_config("opt-clang", {
 		}
 	},
 	function()
-		configuration("clang")
-			buildoptions("-stdlib=lib" .. _OPTIONS["stdlib"])
-			links(_OPTIONS["stdlib"])
+		configuration {"clang"}
+			buildoptions {"-stdlib=lib" .. _OPTIONS["stdlib"]}
+			links {_OPTIONS["stdlib"]}
 	end
 })

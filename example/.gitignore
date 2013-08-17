@@ -2,6 +2,6 @@
 *.make
 Makefile
 
-interim/
+obj/
 lib/
 bin/
