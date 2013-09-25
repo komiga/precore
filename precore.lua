@@ -704,7 +704,11 @@ precore.make_config("opt-clang", {
 			},
 			init_handler = function()
 				if nil == _OPTIONS["stdlib"] then
-					_OPTIONS["stdlib"] = "stdc++"
+					if os.is("linux") then
+						_OPTIONS["stdlib"] = "stdc++"
+					elseif os.is("macosx") then
+						_OPTIONS["stdlib"] = "c++"
+					end
 				end
 			end
 		}
