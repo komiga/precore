@@ -300,7 +300,7 @@ end
 
 		Where the data table is passed to premake's newoption()
 		function, and where init_handler is a function to be called
-		when the precore is initialized.
+		when precore is initialized.
 
 		This sub-block is only executed from precore.init().
 
@@ -478,7 +478,7 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 		error(
 			"could not create project '" .. name ..
 			"' because it already exists within the " ..
-			"active solution ('" .. pc_sol.name .. "')"
+			"active solution ('" .. pc_sol.obj.name .. "')"
 		)
 	end
 
