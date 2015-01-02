@@ -84,11 +84,5 @@ precore.apply("example_generic_project_config")
 
 include("test")
 
--- For ultimate pedantry, ensure objdir is obliterated
-if "clean" == _ACTION then
-	for _, pc_sol in pairs(precore.state.solutions) do
-		for _, pc_proj in pairs(pc_sol.projects) do
-			os.rmdir(path.join(pc_proj.obj.basedir, "obj"))
-		end
-	end
-end
+-- For ultimate pedantry, ensure output directories are obliterated
+precore.action_clean("obj", "lib")
