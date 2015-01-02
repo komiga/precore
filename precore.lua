@@ -587,6 +587,31 @@ function precore.internal.put_env_root(env, parent_env, default_dir, relative)
 end
 
 --[[
+	Clean sub-directories of projects when _ACTION == "clean".
+--]]
+function precore.action_clean(...)
+	local subdirs = precore.internal.table_flatten({...})
+	local clean_project = function(pc_proj)
+		print("Cleaning project: " .. pc_proj.obj.name)
+		for _, name in pairs(subdirs) do
+			local dir = path.join(pc_proj.obj.basedir, name)
+			os.rmdir(dir)
+		end
+	end
+	if "clean" == _ACTION then
+		print("Cleaning sub-directories of projects: ")
+		for _, name in pairs(subdirs) do
+			print("    " .. name)
+		end
+		for _, pc_sol in pairs(precore.state.solutions) do
+			for _, pc_proj in pairs(pc_sol.projects) do
+				clean_project(pc_proj)
+			end
+		end
+	end
+end
+
+--[[
 	Defines the substitution key "ROOT" according to scope.
 
 	At each scope, the following occurs only if "ROOT" is not defined
