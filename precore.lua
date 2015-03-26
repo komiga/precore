@@ -203,6 +203,13 @@ function precore.internal.configure(scope, names, scope_kind)
 end
 
 --[[
+	Get list of all solutions.
+--]]
+function precore.solutions()
+	return precore.state.solutions
+end
+
+--[[
 	Get the active precore solution for the active premake solution.
 
 	Returns nil if either there is no active solution or the active
