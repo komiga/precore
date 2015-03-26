@@ -500,29 +500,17 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 
 	local pc_proj = {
 		scope_kind = ConfigScopeKind.project,
-		env = {},
+		env = env or {},
 		configs = {},
 		solution = pc_sol,
-		obj = project(name)
+		obj = project(name),
 	}
 
 	language(lang)
-
 	configuration {}
 		kind(knd)
-		targetname(name)
-		if nil ~= target_dir then
-			targetdir(target_dir)
-		end
-		if nil ~= obj_dir then
-			objdir(obj_dir)
-		end
 
 	pc_sol.projects[name] = pc_proj
-
-	if nil ~= env then
-		pc_proj.env = env
-	end
 
 	precore.internal.configure(
 		pc_proj.configs,
@@ -537,6 +525,15 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 			pc_proj.scope_kind
 		)
 	end
+
+	configuration {}
+		targetname(precore.subst(name))
+		if nil ~= target_dir then
+			targetdir(precore.subst(target_dir))
+		end
+		if nil ~= obj_dir then
+			objdir(precore.subst(obj_dir))
+		end
 
 	return pc_proj
 end
