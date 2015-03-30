@@ -429,7 +429,7 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 	local pc_sol = precore.active_solution()
 	if not pc_sol then
 		error(string.format(
-			"could not create project '%s' because no solution is active" ..
+			"could not create project '%s' because no solution is active " ..
 			"or the active solution was not created by precore",
 			name
 		))
