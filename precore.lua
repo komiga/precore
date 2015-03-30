@@ -245,6 +245,14 @@ function precore.subst(str, env)
 end
 
 --[[
+	Substitute only through the global scope.
+]]
+function precore.subst_global(str)
+	str = precore.internal.do_subst(str, precore.state.env)
+	return str
+end
+
+--[[
 	Add a precore configuration block.
 
 	'block' is a table of sub-blocks -- references, functions, and
