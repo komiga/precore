@@ -66,7 +66,7 @@ function precore.internal.table_flatten(t)
 end
 
 function precore.internal.do_subst(str, env)
-	local str = string.gsub(str, "%${([^%s]+)}", env)
+	local str = string.gsub(str, "%${([%w_]+)}", env)
 	return str
 end
 
