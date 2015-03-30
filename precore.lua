@@ -66,7 +66,8 @@ function precore.internal.table_flatten(t)
 end
 
 function precore.internal.do_subst(str, env)
-	return string.gsub(str, "%${(%w+)}", env)
+	local str = string.gsub(str, "%${([^%s]+)}", env)
+	return str
 end
 
 function precore.internal.execute_func_block(func, kind, scope_kind)
@@ -239,13 +240,6 @@ function precore.subst(str, env)
 	if pc_sol ~= nil then
 		str = precore.internal.do_subst(str, pc_sol.env)
 	end
-
-	--[[
-		NB: do_subst returns gsub values, which is (str, repcount).
-		Because this will generally be passed straight to list-taking
-		premake functions, we don't want to leak that number in the
-		return.
-	--]]
 	str = precore.internal.do_subst(str, precore.state.env)
 	return str
 end
