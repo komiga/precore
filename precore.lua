@@ -12,34 +12,32 @@ precore = {
 		env = {},
 		enabled_opts = {},
 		configs = {},
-		solutions = {}
-	}
+		solutions = {},
+	},
 }
 
 local SubBlockFunctionKind = {
 	init = 1,
 	solution = 2,
 	project = 3,
-	non_global = 4
+	non_global = 4,
 }
 
 local ConfigScopeKind = {
 	global = 1,
 	solution = 2,
-	project = 3
+	project = 3,
 }
 
 function precore.internal.init_guard()
 	if not precore.state.initialized then
-		error(
-			"precore must be initialized"
-		)
+		error("precore must be initialized")
 	end
 end
 
 function precore.internal.table_find_name(t, name)
 	for _, v in pairs(t) do
-		if name == v.name then
+		if v.name == name then
 			return v
 		end
 	end
@@ -57,7 +55,7 @@ end
 
 function precore.internal.table_flatten(t)
 	for i, v in ipairs(t) do
-		if "table" == type(v) then
+		if type(v) == "table" then
 			table.remove(t, i)
 			for ii, vv in ipairs(v) do
 				table.insert(t, i + ii - 1, vv)
@@ -72,9 +70,7 @@ function precore.internal.do_subst(str, env)
 end
 
 function precore.internal.execute_func_block(func, kind, scope_kind)
-	assert(
-		"function" == type(func)
-	)
+	assert(type(func) == "function")
 
 	local execute = false
 	local obj = nil
@@ -90,9 +86,7 @@ function precore.internal.execute_func_block(func, kind, scope_kind)
 	elseif kind == SubBlockFunctionKind.non_global then
 		execute = (scope_kind ~= ConfigScopeKind.global)
 	else
-		error(
-			"unexpected function kind: '" .. tostring(kind) .. "'"
-		)
+		error(string.format("unexpected function kind: '%s'", tostring(kind)))
 	end
 
 	if execute then
@@ -102,18 +96,18 @@ end
 
 function precore.internal.execute_opt_block(opt_table, scope_kind)
 	assert(
-		"table" == type(opt_table.data) and
+		type(opt_table.data) == "table" and
 		(
-			nil == opt_table.init_handler or
-			"function" == type(opt_table.init_handler)
+			opt_table.init_handler == nil or
+			type(opt_table.init_handler) == "function"
 		)
 	)
 
-	if true ~= precore.state.enabled_opts[opt_table] then
+	if not precore.state.enabled_opts[opt_table] then
 		precore.state.enabled_opts[opt_table] = true
 		newoption(opt_table.data)
 		if
-			nil ~= opt_table.init_handler and
+			opt_table.init_handler ~= nil and
 			scope_kind == ConfigScopeKind.global
 		then
 			opt_table.init_handler()
@@ -123,17 +117,14 @@ end
 
 function precore.internal.execute_table_block(sub_block, scope_kind)
 	for name, value in pairs(sub_block) do
-		if "option" == name then
+		if name == "option" then
 			if scope_kind == ConfigScopeKind.global then
-				precore.internal.execute_opt_block(
-					value,
-					scope_kind
-				)
+				precore.internal.execute_opt_block(value, scope_kind)
 			end
 		elseif
-			"init" == name or
-			"solution" == name or
-			"project" == name
+			name == "init" or
+			name == "solution" or
+			name == "project"
 		then
 			precore.internal.execute_func_block(
 				value,
@@ -141,64 +132,51 @@ function precore.internal.execute_table_block(sub_block, scope_kind)
 				scope_kind
 			)
 		else
-			error(
-				"unrecognized sub-block table key: '" .. name .. "'"
-			)
+			error(string.format("unrecognized sub-block table key: '%s'", name))
 		end
 	end
 end
 
 function precore.internal.execute_block(scope, block, scope_kind)
 	for _, sub_block in pairs(block) do
-		if "string" == type(sub_block) then
+		if type(sub_block) == "string" then
 			precore.internal.execute_block_by_name(
 				scope,
 				sub_block,
 				scope_kind
 			)
-		elseif "function" == type(sub_block) then
+		elseif type(sub_block) == "function" then
 			precore.internal.execute_func_block(
 				sub_block,
 				SubBlockFunctionKind.non_global,
 				scope_kind
 			)
-		elseif "table" == type(sub_block) then
+		elseif type(sub_block) == "table" then
 			precore.internal.execute_table_block(
 				sub_block,
 				scope_kind
 			)
 		else
-			error(
-				"sub-block of type '"  .. type(sub_block) ..
-				"' not expected"
-			)
+			error(string.format(
+				"sub-block of type '%s' not expected", type(sub_block)
+			))
 		end
 	end
 end
 
 function precore.internal.execute_block_by_name(scope, name, scope_kind)
 	local block = precore.configs[name]
-	if nil == block then
-		error(
-			"config '" .. name .. "' does not exist"
-		)
+	if not block then
+		error(string.format("config '%s' does not exist", name))
 	elseif not precore.internal.table_has(scope, name) then
 		table.insert(scope, name)
-		precore.internal.execute_block(
-			scope,
-			block,
-			scope_kind
-		)
+		precore.internal.execute_block(scope, block, scope_kind)
 	end
 end
 
 function precore.internal.configure(scope, names, scope_kind)
 	for _, name in pairs(names) do
-		precore.internal.execute_block_by_name(
-			scope,
-			name,
-			scope_kind
-		)
+		precore.internal.execute_block_by_name(scope, name, scope_kind)
 	end
 end
 
@@ -217,7 +195,7 @@ end
 --]]
 function precore.active_solution()
 	local sol = solution()
-	if nil ~= sol then
+	if sol ~= nil then
 		return precore.state.solutions[sol.name]
 	end
 	return nil
@@ -232,9 +210,9 @@ end
 --]]
 function precore.active_project()
 	local pc_sol = precore.active_solution()
-	if nil ~= pc_sol then
+	if pc_sol ~= nil then
 		local proj = project()
-		if nil ~= proj then
+		if proj ~= nil then
 			return pc_sol.projects[proj.name]
 		end
 	end
@@ -250,17 +228,15 @@ end
 	If 'env' is nil, it is not used for substitution.
 --]]
 function precore.subst(str, env)
-	if nil ~= env then
+	if env ~= nil then
 		str = precore.internal.do_subst(str, env)
 	end
-
 	local pc_proj = precore.active_project()
-	if nil ~= pc_proj then
+	if pc_proj ~= nil then
 		str = precore.internal.do_subst(str, pc_proj.env)
 	end
-
 	local pc_sol = precore.active_solution()
-	if nil ~= pc_sol then
+	if pc_sol ~= nil then
 		str = precore.internal.do_subst(str, pc_sol.env)
 	end
 
@@ -326,13 +302,12 @@ end
 		as argument the active precore project.
 --]]
 function precore.make_config(name, block)
-	if nil ~= precore.configs[name] then
-		error(
-			"could not create config '" .. name ..
-			"' because it already exists"
-		)
+	assert(type(block) == "table")
+	if precore.configs[name] then
+		error(string.format(
+			"could not create config '%s because it already exists", name
+		))
 	end
-
 	precore.configs[name] = block
 end
 
@@ -348,28 +323,21 @@ end
 	enable globally. All of these propagate to solutions and projects.
 --]]
 function precore.init(env, ...)
-	if true == precore.state.initialized then
-		error(
-			"precore has already been initialized"
-		)
+	if precore.state.initialized then
+		error("precore has already been initialized")
 	end
 
-	assert(
-		(nil == env or "table" == type(env))
-	)
-
-	if nil ~= env then
+	assert(env == nil or type(env) == "table")
+	if env ~= nil then
 		precore.state.env = env
 	end
-
-	if nil ~= ... then
+	if ... ~= nil then
 		precore.internal.configure(
 			precore.state.configs,
 			precore.internal.table_flatten({...}),
 			ConfigScopeKind.global
 		)
 	end
-
 	precore.state.initialized = true
 end
 
@@ -394,22 +362,20 @@ end
 --]]
 function precore.make_solution(name, configs, plats, env, ...)
 	precore.internal.init_guard()
-
 	if
-		nil ~= precore.state.solutions[name] or
-		nil ~= premake.solution.list[name]
+		precore.state.solutions[name] ~= nil or
+		premake.solution.list[name] ~= nil
 	then
-		error(
-			"could not create solution '" .. name ..
-			"' because it already exists"
-		)
+		error(string.format(
+			"could not create solution '%s' because it already exists", name
+		))
 	end
 
 	assert(
-		"string" == type(name),
-		"table" == type(configs),
-		"table" == type(plats),
-		(nil == env or "table" == type(env))
+		type(name) == "string",
+		type(configs) == "table",
+		type(plats) == "table",
+		(env == nil or type(env) == "table")
 	)
 
 	local pc_sol = {
@@ -419,30 +385,26 @@ function precore.make_solution(name, configs, plats, env, ...)
 		projects = {},
 		obj = solution(name)
 	}
+	precore.state.solutions[name] = pc_sol
 
 	configurations(configs)
 	platforms(plats)
 
-	precore.state.solutions[name] = pc_sol
-
-	if nil ~= env then
+	if env ~= nil then
 		pc_sol.env = env
 	end
-
 	precore.internal.configure(
 		pc_sol.configs,
 		precore.state.configs,
 		pc_sol.scope_kind
 	)
-
-	if nil ~= ... then
+	if ... ~= nil then
 		precore.internal.configure(
 			pc_sol.configs,
 			precore.internal.table_flatten({...}),
 			pc_sol.scope_kind
 		)
 	end
-
 	return pc_sol
 end
 
@@ -475,27 +437,27 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 	precore.internal.init_guard()
 
 	local pc_sol = precore.active_solution()
-	if nil == pc_sol then
-		error(
-			"could not create project '" .. name ..
-			"' because no solution is active or the active" ..
-			"solution was not created by precore"
-		)
-	elseif nil ~= pc_sol.obj.projects[name] then
-		error(
-			"could not create project '" .. name ..
-			"' because it already exists within the " ..
-			"active solution ('" .. pc_sol.obj.name .. "')"
-		)
+	if not pc_sol then
+		error(string.format(
+			"could not create project '%s' because no solution is active" ..
+			"or the active solution was not created by precore",
+			name
+		))
+	elseif pc_sol.obj.projects[name] then
+		error(string.format(
+			"could not create project '%s' because it already " ..
+			"exists within the active solution ('%s')",
+			name, pc_sol.obj.name
+		))
 	end
 
 	assert(
-		"string" == type(name),
-		"string" == type(lang),
-		"string" == type(knd),
-		"string" == type(target_dir),
-		"string" == type(obj_dir),
-		(nil == env or "table" == type(env))
+		type(name) == "string",
+		type(lang) == "string",
+		type(knd) == "string",
+		(target_dir == nil or type(target_dir) == "string"),
+		(obj_dir == nil or type(obj_dir) == "string"),
+		(env == nil or type(env) == "table")
 	)
 
 	local pc_proj = {
@@ -505,20 +467,18 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 		solution = pc_sol,
 		obj = project(name),
 	}
+	pc_sol.projects[name] = pc_proj
 
 	language(lang)
 	configuration {}
 		kind(knd)
-
-	pc_sol.projects[name] = pc_proj
 
 	precore.internal.configure(
 		pc_proj.configs,
 		pc_sol.configs,
 		pc_proj.scope_kind
 	)
-
-	if nil ~= ... then
+	if ... ~= nil then
 		precore.internal.configure(
 			pc_proj.configs,
 			precore.internal.table_flatten({...}),
@@ -528,10 +488,10 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 
 	configuration {}
 		targetname(precore.subst(name))
-		if nil ~= target_dir then
+		if target_dir ~= nil then
 			targetdir(precore.subst(target_dir))
 		end
-		if nil ~= obj_dir then
+		if obj_dir ~= nil then
 			objdir(precore.subst(obj_dir))
 		end
 
@@ -553,12 +513,12 @@ end
 --]]
 function precore.apply(...)
 	local pc_obj = precore.active_project()
-	if nil == pc_obj then
+	if pc_obj == nil then
 		pc_obj = precore.active_solution()
 	end
 
 	local names = precore.internal.table_flatten({...})
-	if nil ~= pc_obj then
+	if pc_obj ~= nil then
 		precore.internal.configure(
 			pc_obj.configs,
 			names,
@@ -574,16 +534,9 @@ function precore.apply(...)
 end
 
 function precore.internal.put_env_root(env, parent_env, default_dir, relative)
-	if nil == env["ROOT"] then
-		if
-			true == relative and
-			nil ~= parent_env["ROOT"] and
-			0 ~= #parent_env["ROOT"]
-		then
-			env["ROOT"] = path.getrelative(
-				default_dir,
-				parent_env["ROOT"]
-			)
+	if not env["ROOT"] then
+		if relative and parent_env and parent_env["ROOT"] then
+			env["ROOT"] = path.getrelative(default_dir, parent_env["ROOT"])
 		else
 			env["ROOT"] = default_dir
 		end
@@ -602,7 +555,7 @@ function precore.action_clean(...)
 			os.rmdir(dir)
 		end
 	end
-	if "clean" == _ACTION then
+	if _ACTION == "clean" then
 		print("Cleaning sub-directories of projects: ")
 		for _, name in pairs(subdirs) do
 			print("    " .. name)
@@ -718,7 +671,7 @@ precore.make_config("opt-clang", {
 				description = "Use Clang in-place of GCC"
 			},
 			init_handler = function()
-				if nil ~= _OPTIONS["clang"] then
+				if _OPTIONS["clang"] ~= nil then
 					premake.gcc.cc = "clang"
 					premake.gcc.cxx = "clang++"
 				end
@@ -732,7 +685,7 @@ precore.make_config("opt-clang", {
 				description = "C++ stdlib to use for Clang"
 			},
 			init_handler = function()
-				if nil == _OPTIONS["stdlib"] then
+				if _OPTIONS["stdlib"] == nil then
 					if os.is("linux") then
 						_OPTIONS["stdlib"] = "stdc++"
 					elseif os.is("macosx") then
