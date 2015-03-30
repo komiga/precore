@@ -332,11 +332,7 @@ function precore.init(env, ...)
 		precore.state.env = env
 	end
 	if ... ~= nil then
-		precore.internal.configure(
-			precore.state.configs,
-			precore.internal.table_flatten({...}),
-			ConfigScopeKind.global
-		)
+		precore.apply_global(...)
 	end
 	precore.state.initialized = true
 end
@@ -516,21 +512,28 @@ function precore.apply(...)
 	if pc_obj == nil then
 		pc_obj = precore.active_solution()
 	end
-
-	local names = precore.internal.table_flatten({...})
-	if pc_obj ~= nil then
+	if pc_obj then
 		precore.internal.configure(
 			pc_obj.configs,
-			names,
+			precore.internal.table_flatten({...}),
 			pc_obj.scope_kind
 		)
 	else
-		precore.internal.configure(
-			precore.state.configs,
-			names,
-			ConfigScopeKind.global
-		)
+		precore.apply_global(...)
 	end
+end
+
+--[[
+	Apply precore configs by name at global scope.
+
+	Same effect as precore.apply(), but ignoring project/solution scope.
+--]]
+function precore.apply_global(...)
+	precore.internal.configure(
+		precore.state.configs,
+		precore.internal.table_flatten({...}),
+		ConfigScopeKind.global
+	)
 end
 
 --[[
