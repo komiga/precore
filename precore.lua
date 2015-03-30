@@ -533,16 +533,6 @@ function precore.apply(...)
 	end
 end
 
-function precore.internal.put_env_root(env, parent_env, default_dir, relative)
-	if not env["ROOT"] then
-		if relative and parent_env and parent_env["ROOT"] then
-			env["ROOT"] = path.getrelative(default_dir, parent_env["ROOT"])
-		else
-			env["ROOT"] = default_dir
-		end
-	end
-end
-
 --[[
 	Clean sub-directories of projects when _ACTION == "clean".
 --]]
@@ -568,6 +558,16 @@ function precore.action_clean(...)
 	end
 end
 
+function precore.internal.put_env_root(env, parent_env, default_dir, relative)
+	if not env["ROOT"] then
+		if relative and parent_env and parent_env["ROOT"] then
+			env["ROOT"] = path.getrelative(default_dir, parent_env["ROOT"])
+		else
+			env["ROOT"] = default_dir
+		end
+	end
+end
+
 --[[
 	Defines the substitution key "ROOT" according to scope.
 
@@ -583,33 +583,43 @@ end
 	either does not have "ROOT" or "ROOT" is an empty string.
 --]]
 precore.make_config("precore-env-root", {
-	{
-		init = function()
-			precore.internal.put_env_root(
-				precore.state.env,
-				nil,
-				os.getcwd(),
-				false
-			)
-		end,
-		solution = function(pc_sol)
-			precore.internal.put_env_root(
-				pc_sol.env,
-				precore.state.env,
-				pc_sol.obj.basedir,
-				true
-			)
-		end,
-		project = function(pc_proj)
-			precore.internal.put_env_root(
-				pc_proj.env,
-				precore.state.env,
-				pc_proj.obj.basedir,
-				true
-			)
-		end
-	}
-})
+{init = function()
+	precore.internal.put_env_root(
+		precore.state.env,
+		nil,
+		os.getcwd(),
+		false
+	)
+end,
+solution = function(pc_sol)
+	precore.internal.put_env_root(
+		pc_sol.env,
+		precore.state.env,
+		pc_sol.obj.basedir,
+		true
+	)
+end,
+project = function(pc_proj)
+	precore.internal.put_env_root(
+		pc_proj.env,
+		precore.state.env,
+		pc_proj.obj.basedir,
+		true
+	)
+end}})
+
+--[[
+	Defines the substitution key "NAME" for projects.
+
+	At the project scope, this defines "NAME" to the object's
+	name property iff it is not already defined.
+--]]
+precore.make_config("precore-env-project-name", {
+{project = function(pc_proj)
+	if not pc_proj.env["NAME"] then
+		pc_proj.env["NAME"] = pc_proj.obj.name
+	end
+end}})
 
 --[[
 	Generic configuration for debug and release configurations.
@@ -627,19 +637,18 @@ precore.make_config("precore-env-root", {
 		- defines: NDEBUG
 --]]
 precore.make_config("precore-generic", {
-	function()
-		configuration {"debug"}
-			flags {"Symbols"}
-			defines {"DEBUG", "_DEBUG"}
+function()
+	configuration {"debug"}
+		flags {"Symbols"}
+		defines {"DEBUG", "_DEBUG"}
 
-		configuration {"release"}
-			flags {"Optimize"}
-			defines {"NDEBUG"}
+	configuration {"release"}
+		flags {"Optimize"}
+		defines {"NDEBUG"}
 
-		configuration {}
-			flags {"ExtraWarnings"}
-	end
-})
+	configuration {}
+		flags {"ExtraWarnings"}
+end})
 
 --[[
 	Core C++11 config.
@@ -649,11 +658,10 @@ precore.make_config("precore-generic", {
 	Should generally be enabled globally.
 --]]
 precore.make_config("c++11-core", {
-	function()
-		configuration {"linux or macosx"}
-			buildoptions {"-std=c++11"}
-	end
-})
+function()
+	configuration {"linux or macosx"}
+		buildoptions {"-std=c++11"}
+end})
 
 --[[
 	Clang compiler replacement for premake4.x.
@@ -664,40 +672,35 @@ precore.make_config("c++11-core", {
 	Should be enabled globally.
 --]]
 precore.make_config("opt-clang", {
-	{
-		option = {
-			data = {
-				trigger = "clang",
-				description = "Use Clang in-place of GCC"
-			},
-			init_handler = function()
-				if _OPTIONS["clang"] ~= nil then
-					premake.gcc.cc = "clang"
-					premake.gcc.cxx = "clang++"
-				end
-			end
-		}
+{option = {
+	data = {
+		trigger = "clang",
+		description = "Use Clang in-place of GCC"
 	},
-	{
-		option = {
-			data = {
-				trigger = "stdlib",
-				description = "C++ stdlib to use for Clang"
-			},
-			init_handler = function()
-				if _OPTIONS["stdlib"] == nil then
-					if os.is("linux") then
-						_OPTIONS["stdlib"] = "stdc++"
-					elseif os.is("macosx") then
-						_OPTIONS["stdlib"] = "c++"
-					end
-				end
-			end
-		}
-	},
-	function()
-		configuration {"clang"}
-			buildoptions {"-stdlib=lib" .. _OPTIONS["stdlib"]}
-			links {_OPTIONS["stdlib"]}
+	init_handler = function()
+		if _OPTIONS["clang"] ~= nil then
+			premake.gcc.cc = "clang"
+			premake.gcc.cxx = "clang++"
+		end
 	end
-})
+}},
+{option = {
+	data = {
+		trigger = "stdlib",
+		description = "C++ stdlib to use for Clang"
+	},
+	init_handler = function()
+		if _OPTIONS["stdlib"] == nil then
+			if os.is("linux") then
+				_OPTIONS["stdlib"] = "stdc++"
+			elseif os.is("macosx") then
+				_OPTIONS["stdlib"] = "c++"
+			end
+		end
+	end
+}},
+function()
+	configuration {"clang"}
+		buildoptions {"-stdlib=lib" .. _OPTIONS["stdlib"]}
+		links {_OPTIONS["stdlib"]}
+end})
