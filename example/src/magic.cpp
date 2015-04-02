@@ -3,8 +3,7 @@
 
 namespace Example {
 
-unsigned
-get_magical_number() noexcept {
+unsigned get_magical_number() noexcept {
 	return 42;
 }
 

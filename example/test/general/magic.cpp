@@ -1,14 +1,9 @@
 
 #include <example/magic.hpp>
 
-#include <iostream>
+#include <cstdio>
 
-signed
-main() {
-	std::cout
-		<< "The magic is "
-		<< Example::get_magical_number()
-		<< '\n'
-	; std::cout.flush();
+signed main() {
+	std::printf("The magic is %u.\n", Example::get_magical_number());
 	return 0;
 }
