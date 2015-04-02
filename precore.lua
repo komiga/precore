@@ -486,13 +486,14 @@ end
 
 	If the path has already been imported, this does nothing.
 --]]
-function precore.import(path)
-	if string.sub(path, -4) ~= ".lua" then
-		path = path .. "/build.lua"
+function precore.import(p)
+	if string.sub(p, -4) ~= ".lua" then
+		p = p .. "/build.lua"
 	end
-	if not precore.internal.imported_paths[path] then
-		precore.internal.imported_paths[path] = true
-		dofile(path)
+	p = path.getabsolute(p)
+	if not precore.internal.imported_paths[p] then
+		precore.internal.imported_paths[p] = true
+		dofile(p)
 	end
 end
 
