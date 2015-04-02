@@ -5,6 +5,7 @@
 
 precore = {
 	internal = {
+		imported_paths = {},
 		wd_stack = {},
 	},
 	configs = {},
@@ -481,13 +482,17 @@ end
 --[[
 	Import build script at path.
 
-	Unless path ends with ".lua", loads (path .. "/build.lua").
+	Unless path ends with ".lua", this loads (path .. "/build.lua").
+
+	If the path has already been imported, this does nothing.
 --]]
 function precore.import(path)
-	if string.sub(path, -4) == ".lua" then
+	if string.sub(path, -4) ~= ".lua" then
+		path = path .. "/build.lua"
+	end
+	if not precore.internal.imported_paths[path] then
+		precore.internal.imported_paths[path] = true
 		dofile(path)
-	else
-		dofile(path .. "/build.lua")
 	end
 end
 
@@ -553,7 +558,7 @@ end
 	scope.
 
 	'...' is a vararg string list or table of precore config names to
-	enable on the solution. These are executed after propagation from
+	apply to the solution. These are executed after propagation from
 	the global configs.
 
 	Returns the new precore solution; the new premake solution will
@@ -626,7 +631,7 @@ end
 	scope.
 
 	'...' is a vararg string list or table of precore config names to
-	enable on the project. These are executed after propagation from
+	apply to the project. These are executed after propagation from
 	the global configs.
 
 	Returns the new precore project; the new premake project will be
