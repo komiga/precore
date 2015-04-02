@@ -31,4 +31,4 @@ precore.make_solution(
 	{"native"}
 )
 
-precore.include("general")
+precore.import("general")

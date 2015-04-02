@@ -479,11 +479,11 @@ function precore.append_config_scoped(name, block)
 end
 
 --[[
-	Load build script at path.
+	Import build script at path.
 
 	Unless path ends with ".lua", loads (path .. "/build.lua").
 --]]
-function precore.include(path)
+function precore.import(path)
 	if string.sub(path, -4) == ".lua" then
 		dofile(path)
 	else

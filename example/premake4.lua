@@ -1,5 +1,7 @@
 
-dofile("../precore.lua")
+dofile("../precore_import.lua")
+
+import_precore()
 
 -- Configs can be created before initialization
 
@@ -80,7 +82,7 @@ configuration {}
 -- Can also be passed to make_project()
 precore.apply("example.generic-project-config")
 
-precore.include("test")
+precore.import("test")
 
 -- For ultimate pedantry, ensure output directories are obliterated
 precore.action_clean("obj", "lib")
