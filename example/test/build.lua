@@ -28,7 +28,7 @@ end
 precore.make_solution(
 	"test_solution",
 	{"debug", "release"},
-	{"x32", "x64"}
+	{"native"}
 )
 
-include("general")
+precore.include("general")

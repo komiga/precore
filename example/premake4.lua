@@ -3,30 +3,28 @@ dofile("../precore.lua")
 
 -- Configs can be created before initialization
 
-precore.make_config("example_config", {
-	{
-		init = function()
-			print("from example_config at init()")
-		end,
-		solution = function(sol)
-			print("from example_config at solution '" .. sol.obj.name .. "'")
-		end,
-		project = function(proj)
-			print("from example_config at project '" .. proj.obj.name .. "'")
-		end
-	},
-	function()
-		print("from example_config at sub-block function")
+precore.make_config("example.config", nil, {
+{
+	global = function()
+		print("from example.config at global")
+	end,
+	solution = function(sol)
+		print("from example.config at solution '" .. sol.obj.name .. "'")
+	end,
+	project = function(proj)
+		print("from example.config at project '" .. proj.obj.name .. "'")
 	end
-})
+},
+function()
+	print("from example.config at sub-block function")
+end})
 
-precore.make_config("example_generic_project_config", {
-	function()
-		configuration {}
-			includedirs {"include"}
-			files {"src/**.cpp"}
-	end
-})
+precore.make_config("example.generic-project-config", nil, {
+function()
+	configuration {}
+		includedirs {"include"}
+		files {"src/**.cpp"}
+end})
 
 precore.init(
 	-- env
@@ -34,11 +32,11 @@ precore.init(
 
 	-- precore configs
 	{
-		"opt-clang",
-		"c++11-core",
-		"precore-env-root",
-		"precore-generic",
-		"example_config"
+		"precore.clang-opts",
+		"precore.c++11-core",
+		"precore.env-common",
+		"precore.generic",
+		"example.config",
 	}
 )
 
@@ -50,7 +48,7 @@ precore.make_solution(
 	{"debug", "release"},
 
 	-- platforms
-	{"x32", "x64"},
+	{"native"},
 
 	-- env, precore configs
 	nil, nil
@@ -80,9 +78,9 @@ configuration {}
 	targetname("magic")
 
 -- Can also be passed to make_project()
-precore.apply("example_generic_project_config")
+precore.apply("example.generic-project-config")
 
-include("test")
+precore.include("test")
 
 -- For ultimate pedantry, ensure output directories are obliterated
 precore.action_clean("obj", "lib")
