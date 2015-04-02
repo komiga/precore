@@ -4,20 +4,17 @@
 -- TODO: Substitution table access for solution and project
 
 precore = {
-	internal = {},
+	internal = {
+		wd_stack = {},
+	},
 	configs = {},
 
-	state = {
-		initialized = false,
-		env = {},
-		enabled_opts = {},
-		configs = {},
-		solutions = {},
-	},
+	initialized = false,
+	state = nil,
 }
 
 local SubBlockFunctionKind = {
-	init = 1,
+	global = 1,
 	solution = 2,
 	project = 3,
 	non_global = 4,
@@ -30,7 +27,7 @@ local ConfigScopeKind = {
 }
 
 function precore.internal.init_guard()
-	if not precore.state.initialized then
+	if not precore.initialized then
 		error("precore must be initialized")
 	end
 end
@@ -42,6 +39,10 @@ function precore.internal.table_find_name(t, name)
 		end
 	end
 	return nil
+end
+
+function precore.internal.table_last(t)
+	return t[#t]
 end
 
 function precore.internal.table_has(t, v)
@@ -70,22 +71,30 @@ function precore.internal.do_subst(str, env)
 	return str
 end
 
+function precore.internal.make_config_state()
+	return {
+		applied = {},
+		nest_count = 0,
+		pos = 0,
+	}
+end
+
 function precore.internal.execute_func_block(func, kind, scope_kind)
 	assert(type(func) == "function")
 
 	local execute = false
 	local obj = nil
 
-	if kind == SubBlockFunctionKind.init then
-		execute = (scope_kind == ConfigScopeKind.global)
+	if kind == SubBlockFunctionKind.global then
+		execute = scope_kind == ConfigScopeKind.global
 	elseif kind == SubBlockFunctionKind.solution then
-		execute = (scope_kind == ConfigScopeKind.solution)
+		execute = scope_kind == ConfigScopeKind.solution
 		obj = precore.active_solution()
 	elseif kind == SubBlockFunctionKind.project then
-		execute = (scope_kind == ConfigScopeKind.project)
+		execute = scope_kind == ConfigScopeKind.project
 		obj = precore.active_project()
 	elseif kind == SubBlockFunctionKind.non_global then
-		execute = (scope_kind ~= ConfigScopeKind.global)
+		execute = scope_kind ~= ConfigScopeKind.global
 	else
 		error(string.format("unexpected function kind: '%s'", tostring(kind)))
 	end
@@ -107,23 +116,24 @@ function precore.internal.execute_opt_block(opt_table, scope_kind)
 	if not precore.state.enabled_opts[opt_table] then
 		precore.state.enabled_opts[opt_table] = true
 		newoption(opt_table.data)
-		if
-			opt_table.init_handler ~= nil and
-			scope_kind == ConfigScopeKind.global
-		then
+		if opt_table.init_handler ~= nil then
 			opt_table.init_handler()
 		end
 	end
 end
 
-function precore.internal.execute_table_block(sub_block, scope_kind)
+function precore.internal.execute_table_block(scope, sub_block, scope_kind)
 	for name, value in pairs(sub_block) do
 		if name == "option" then
 			if scope_kind == ConfigScopeKind.global then
 				precore.internal.execute_opt_block(value, scope_kind)
 			end
+		elseif name == "wd_scoped" then
+			precore.push_wd(value.path)
+			precore.internal.execute_block(scope, value.block, scope_kind)
+			precore.pop_wd()
 		elseif
-			name == "init" or
+			name == "global" or
 			name == "solution" or
 			name == "project"
 		then
@@ -154,6 +164,7 @@ function precore.internal.execute_block(scope, block, scope_kind)
 			)
 		elseif type(sub_block) == "table" then
 			precore.internal.execute_table_block(
+				scope,
 				sub_block,
 				scope_kind
 			)
@@ -166,13 +177,25 @@ function precore.internal.execute_block(scope, block, scope_kind)
 end
 
 function precore.internal.execute_block_by_name(scope, name, scope_kind)
-	local block = precore.configs[name]
-	if not block then
+	local config = precore.configs[name]
+	if not config then
 		error(string.format("config '%s' does not exist", name))
-	elseif not precore.internal.table_has(scope, name) then
-		table.insert(scope, name)
-		precore.internal.execute_block(scope, block, scope_kind)
+	elseif
+		(config.properties.once and config.properties.__exec_count > 0) or
+		precore.internal.table_has(scope.applied, name)
+	then
+		return
 	end
+
+	assert(scope.nest_count >= 0)
+	scope.nest_count = scope.nest_count + 1
+	if scope.nest_count == 1 then
+		scope.pos = #scope.applied + 1
+	end
+	config.properties.__exec_count = config.properties.__exec_count + 1
+	table.insert(scope.applied, scope.pos, name)
+	precore.internal.execute_block(scope, config.block, scope_kind)
+	scope.nest_count = scope.nest_count - 1
 end
 
 function precore.internal.configure(scope, names, scope_kind)
@@ -220,6 +243,29 @@ function precore.active_project()
 	return nil
 end
 
+function precore.internal.subst_first(name, env)
+	local value = nil
+	if env ~= nil then
+		value = env[name]
+	end
+	if value ~= nil then return value end
+
+	local pc_proj = precore.active_project()
+	if pc_proj ~= nil then
+		value = pc_proj.env[name]
+	end
+	if value ~= nil then return value end
+
+	local pc_sol = precore.active_solution()
+	if pc_sol ~= nil then
+		value = pc_sol.env[name]
+	end
+	if value ~= nil then return value end
+
+	value = precore.state.env[name]
+	return value
+end
+
 --[[
 	Substitute substrings in the form "${NAME}" with their respective
 	values from the given substitution table, the active project
@@ -246,14 +292,85 @@ end
 
 --[[
 	Substitute only through the global scope.
-]]
+--]]
 function precore.subst_global(str)
 	str = precore.internal.do_subst(str, precore.state.env)
 	return str
 end
 
 --[[
-	Add a precore configuration block.
+	Translate path relative to some root.
+
+	'to' is passed through precore.subst().
+
+	If 'root' is nil, it defaults to "ROOT" through the substitution chain.
+--]]
+function precore.path_relative(to, root)
+	local root = root or precore.internal.subst_first("ROOT")
+	assert(root ~= nil)
+	return path.getrelative(precore.subst(to), root)
+end
+
+--[[
+	Returns the following functions:
+
+	precore.subst
+	precore.subst_global
+	precore.path_relative
+
+	These can be used to alias the oft-used functions locally; e.g.:
+
+	local S, G, R = precore.helpers()
+--]]
+function precore.helpers()
+	return precore.subst, precore.subst_global, precore.path_relative
+end
+
+--[[
+	Push 'path' as the current working directory.
+--]]
+function precore.push_wd(path)
+	table.insert(precore.internal.wd_stack, os.getcwd())
+	assert(os.chdir(path) == true)
+end
+
+--[[
+	Pop the current working directory.
+
+	This changes the current working directory to the previous path on the
+	stack.
+--]]
+function precore.pop_wd()
+	assert(#precore.internal.wd_stack > 0)
+	local prev_wd = table.remove(precore.internal.wd_stack)
+	assert(os.chdir(prev_wd) == true)
+end
+
+--[[
+	Wrap a function to retain the current working directory upon calling.
+
+	When the returned function is called, the working directory is reverted
+	after calling 'func'.
+--]]
+function precore.wd_scoped(func)
+	local wrapped_wd = os.getcwd()
+	local wrapped = function(...)
+		precore.push_wd(wrapped_wd)
+		func(...)
+		precore.pop_wd()
+	end
+	return wrapped
+end
+
+--[[
+	Add a precore configuration.
+
+	'properties' is an optional table of configuration properties. It can
+	contain the following:
+
+	- once
+
+		Whether the config should be executed only once.
 
 	'block' is a table of sub-blocks -- references, functions, and
 	tables -- to apply.
@@ -287,11 +404,11 @@ end
 		function, and where init_handler is a function to be called
 		when precore is initialized.
 
-		This sub-block is only executed from precore.init().
+		This sub-block is executed only from precore.init() or global scope.
 
-	- init
+	- global
 
-		A function to be executed only from precore.init().
+		A function to be executed only from precore.init() or global scope.
 
 	- solution
 
@@ -303,14 +420,75 @@ end
 		A function to be executed only at the project level, taking
 		as argument the active precore project.
 --]]
-function precore.make_config(name, block)
+function precore.make_config(name, properties, block)
 	assert(type(block) == "table")
+	assert(properties == nil or type(properties) == "table")
 	if precore.configs[name] then
 		error(string.format(
-			"could not create config '%s because it already exists", name
+			"could not create config '%s' because it already exists", name
 		))
 	end
-	precore.configs[name] = block
+	properties = properties or {}
+	properties.__exec_count = 0
+	precore.configs[name] = {
+		block = block,
+		properties = properties,
+	}
+end
+
+--[[
+	Add a precore configuration as through wrapped by precore.wd_scoped().
+--]]
+function precore.make_config_scoped(name, properties, block)
+	block = {{wd_scoped = {
+		path = os.getcwd(),
+		block = block,
+	}}}
+	precore.make_config(name, properties, block)
+end
+
+--[[
+	Append sub-blocks to an existing config.
+
+	'block' is the same as for precore.make_config().
+--]]
+function precore.append_config(name, block)
+	assert(type(block) == "table")
+	local config = precore.configs[name]
+	if not config then
+		error(string.format(
+			"could not append to config '%s' because it doesn't exist", name
+		))
+	end
+	for _, sub in pairs(block) do
+		table.insert(config.block, sub)
+	end
+end
+
+--[[
+	Append sub-blocks to an existing config as through wrapped by
+	precore.wd_scoped().
+--]]
+function precore.append_config_scoped(name, block)
+	assert(type(block) == "table")
+	block = {{wd_scoped = {
+		path = os.getcwd(),
+		block = block,
+	}}}
+	precore.append_config(name, block)
+end
+
+--[[
+	Load build script at path.
+
+	Unless path ends with ".lua", loads (path .. "/build.lua").
+--]]
+function precore.include(path)
+	if string.sub(path, -4) == ".lua" then
+		dofile(path)
+	else
+		dofile(path .. "/build.lua")
+	end
 end
 
 --[[
@@ -323,20 +501,43 @@ end
 
 	'...' is a vararg string list or table of precore config names to
 	enable globally. All of these propagate to solutions and projects.
+
+	If "ROOT" is not defined in the global substitution table, it is defined
+	to the current working directory.
 --]]
 function precore.init(env, ...)
-	if precore.state.initialized then
+	if precore.initialized then
 		error("precore has already been initialized")
 	end
+	precore.initialized = true
+
+	precore.state = {
+		config_func_once = {},
+		env = {},
+		config_state = precore.internal.make_config_state(),
+		enabled_opts = {},
+		solutions = {},
+	}
 
 	assert(env == nil or type(env) == "table")
 	if env ~= nil then
 		precore.state.env = env
 	end
+	if precore.state.env["ROOT"] == nil then
+		precore.state.env["ROOT"] = os.getcwd()
+	end
+
 	if ... ~= nil then
 		precore.apply_global(...)
 	end
-	precore.state.initialized = true
+end
+
+--[[
+	Get the global substitution table.
+--]]
+function precore.env()
+	precore.internal.init_guard()
+	return precore.state.env
 end
 
 --[[
@@ -379,7 +580,7 @@ function precore.make_solution(name, configs, plats, env, ...)
 	local pc_sol = {
 		scope_kind = ConfigScopeKind.solution,
 		env = {},
-		configs = {},
+		config_state = precore.internal.make_config_state(),
 		projects = {},
 		obj = solution(name)
 	}
@@ -392,13 +593,13 @@ function precore.make_solution(name, configs, plats, env, ...)
 		pc_sol.env = env
 	end
 	precore.internal.configure(
-		pc_sol.configs,
-		precore.state.configs,
+		pc_sol.config_state,
+		precore.state.config_state.applied,
 		pc_sol.scope_kind
 	)
 	if ... ~= nil then
 		precore.internal.configure(
-			pc_sol.configs,
+			pc_sol.config_state,
 			precore.internal.table_flatten({...}),
 			pc_sol.scope_kind
 		)
@@ -461,7 +662,7 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 	local pc_proj = {
 		scope_kind = ConfigScopeKind.project,
 		env = env or {},
-		configs = {},
+		config_state = precore.internal.make_config_state(),
 		solution = pc_sol,
 		obj = project(name),
 	}
@@ -472,13 +673,13 @@ function precore.make_project(name, lang, knd, target_dir, obj_dir, env, ...)
 		kind(knd)
 
 	precore.internal.configure(
-		pc_proj.configs,
-		pc_sol.configs,
+		pc_proj.config_state,
+		pc_sol.config_state.applied,
 		pc_proj.scope_kind
 	)
 	if ... ~= nil then
 		precore.internal.configure(
-			pc_proj.configs,
+			pc_proj.config_state,
 			precore.internal.table_flatten({...}),
 			pc_proj.scope_kind
 		)
@@ -510,13 +711,14 @@ end
 	Any existing children of the scope will not receive these configs.
 --]]
 function precore.apply(...)
+	precore.internal.init_guard()
 	local pc_obj = precore.active_project()
 	if pc_obj == nil then
 		pc_obj = precore.active_solution()
 	end
 	if pc_obj then
 		precore.internal.configure(
-			pc_obj.configs,
+			pc_obj.config_state,
 			precore.internal.table_flatten({...}),
 			pc_obj.scope_kind
 		)
@@ -531,8 +733,9 @@ end
 	Same effect as precore.apply(), but ignoring project/solution scope.
 --]]
 function precore.apply_global(...)
+	precore.internal.init_guard()
 	precore.internal.configure(
-		precore.state.configs,
+		precore.state.config_state,
 		precore.internal.table_flatten({...}),
 		ConfigScopeKind.global
 	)
@@ -563,66 +766,70 @@ function precore.action_clean(...)
 	end
 end
 
-function precore.internal.put_env_root(env, parent_env, default_dir, relative)
-	if not env["ROOT"] then
-		if relative and parent_env and parent_env["ROOT"] then
-			env["ROOT"] = path.getrelative(default_dir, parent_env["ROOT"])
-		else
-			env["ROOT"] = default_dir
-		end
+function precore.internal.print_debug(prefix, obj)
+	print(prefix .. "env:")
+	for k, v in pairs(obj.env) do
+		print(prefix .. string.format("  %s = %s", k, tostring(v)))
+	end
+	print("\n" .. prefix .. "config:")
+	for _, name in pairs(obj.config_state.applied) do
+		print(prefix .. "  " .. name)
 	end
 end
 
 --[[
-	Defines the substitution key "ROOT" according to scope.
+	Print applied configs and substitution tables.
 
-	At each scope, the following occurs only if "ROOT" is not defined
-	in its substitution table.
-
-	At the global scope, defines "ROOT" to the current working
-	directory.
-
-	At the solution and project scopes, defines "ROOT" to the object's
-	basedir property relative to the global "ROOT" value, or simply to
-	the object's basedir property if the global substitution table
-	either does not have "ROOT" or "ROOT" is an empty string.
+	If 'obj' is non-nil, prints only properties of 'obj'.
 --]]
-precore.make_config("precore-env-root", {
-{init = function()
-	precore.internal.put_env_root(
-		precore.state.env,
-		nil,
-		os.getcwd(),
-		false
-	)
-end,
-solution = function(pc_sol)
-	precore.internal.put_env_root(
-		pc_sol.env,
-		precore.state.env,
-		pc_sol.obj.basedir,
-		true
-	)
-end,
-project = function(pc_proj)
-	precore.internal.put_env_root(
-		pc_proj.env,
-		precore.state.env,
-		pc_proj.obj.basedir,
-		true
-	)
-end}})
+function precore.print_debug(obj)
+	if obj then
+		print(obj.name .. " env:")
+		precore.internal.print_debug("  ", obj)
+	end
+
+	print("- global:")
+	precore.internal.print_debug(string.format("  "), precore.state)
+
+	for s_name, s in pairs(precore.state.solutions) do
+		print(string.format("\n- solution '%s':", s_name))
+		precore.internal.print_debug(string.format("  "), s)
+		for p_name, p in pairs(s.projects) do
+			print(string.format("\n  - project '%s':", p_name))
+			precore.internal.print_debug(string.format("    "), p)
+		end
+	end
+	print("")
+end
 
 --[[
-	Defines the substitution key "NAME" for projects.
+	Defines common substitution keys.
 
-	At the project scope, this defines "NAME" to the object's
-	name property iff it is not already defined.
+	Defines the following substitutions unless they are already defined:
+
+	At the global scope:
+
+		"DEP_PATH" to "${ROOT}/dep"
+		"BUILD_PATH" to "${ROOT}/build"
+
+	At the project scope:
+
+		"NAME" to the project name
 --]]
-precore.make_config("precore-env-project-name", {
+precore.make_config("precore.env-common", nil, {
+{global = function()
+	local env = precore.env()
+	if not env["DEP_PATH"] then
+		env["DEP_PATH"] = precore.subst_global("${ROOT}/dep")
+	end
+	if not env["BUILD_PATH"] then
+		env["BUILD_PATH"] = precore.subst_global("${ROOT}/build")
+	end
+end},
 {project = function(pc_proj)
-	if not pc_proj.env["NAME"] then
-		pc_proj.env["NAME"] = pc_proj.obj.name
+	local env = pc_proj.env
+	if not env["NAME"] then
+		env["NAME"] = pc_proj.obj.name
 	end
 end}})
 
@@ -641,7 +848,7 @@ end}})
 		- flags: Optimize
 		- defines: NDEBUG
 --]]
-precore.make_config("precore-generic", {
+precore.make_config("precore.generic", nil, {
 function()
 	configuration {"debug"}
 		flags {"Symbols"}
@@ -662,7 +869,7 @@ end})
 
 	Should generally be enabled globally.
 --]]
-precore.make_config("c++11-core", {
+precore.make_config("precore.c++11-core", nil, {
 function()
 	configuration {"linux or macosx"}
 		buildoptions {"-std=c++11"}
@@ -676,7 +883,7 @@ end})
 
 	Should be enabled globally.
 --]]
-precore.make_config("opt-clang", {
+precore.make_config("precore.clang-opts", nil, {
 {option = {
 	data = {
 		trigger = "clang",
