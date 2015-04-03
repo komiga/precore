@@ -979,8 +979,11 @@ precore.make_config("precore.clang-opts", nil, {
 		end
 	end
 }},
-function()
+{project = function()
 	configuration {"clang"}
 		buildoptions {"-stdlib=lib" .. _OPTIONS["stdlib"]}
+
+	if not precore.env_project()["NO_LINK"] then
 		links {_OPTIONS["stdlib"]}
-end})
+	end
+end}})
