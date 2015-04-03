@@ -1,8 +1,6 @@
 
 -- precore
 
--- TODO: Substitution table access for solution and project
-
 precore = {
 	internal = {
 		imported_paths = {},
@@ -538,12 +536,79 @@ function precore.init(env, ...)
 	end
 end
 
---[[
-	Get the global substitution table.
---]]
-function precore.env()
+function precore.internal.env_set(env, add, no_overwrite)
+	assert(add == nil or type(add) == "table")
 	precore.internal.init_guard()
-	return precore.state.env
+	if add then
+		for k, v in pairs(add) do
+			assert(type(k) == "string")
+			if not no_overwrite or env[k] == nil or #env[k] == 0 then
+				env[k] = v
+			end
+		end
+	end
+	return env
+end
+
+--[[
+	Add definitions to the most immediate substitution table.
+
+	Returns the substitution table.
+
+	If 'no_overwrite' is true, values in 'add' that are already defined are
+	ignored.
+--]]
+function precore.env_immediate(add, no_overwrite)
+	local obj = precore.active_project()
+	if obj == nil then obj = precore.active_solution() end
+	if obj == nil then obj = precore.state end
+	return precore.internal.env_set(obj.env, add, no_overwrite)
+end
+
+--[[
+	Add definitions to the global substitution table.
+--]]
+function precore.env_global(add, no_overwrite)
+	return precore.internal.env_set(precore.state.env, add, no_overwrite)
+end
+
+--[[
+	Add definitions to the solution substitution table.
+--]]
+function precore.env_solution(add, no_overwrite)
+	local obj = precore.active_solution()
+	assert(obj)
+	return precore.internal.env_set(obj.env, add, no_overwrite)
+end
+
+--[[
+	Add definitions to the project substitution table.
+--]]
+function precore.env_project(add, no_overwrite)
+	local obj = precore.active_project()
+	assert(obj)
+	return precore.internal.env_set(obj.env, add, no_overwrite)
+end
+
+--[[
+	Define ROOT, DEP, and BUILD substitutions at global scope by group name.
+
+	Defines the following iff they are not already defined:
+
+		<name>_ROOT = path
+		<name>_DEP = ${<name>_ROOT}/dep
+		<name>_BUILD = ${<name>_ROOT}/build
+--]]
+function precore.define_group(name, path)
+	assert(type(name) == "string" and #name > 0)
+	local root_name = name .. "_ROOT"
+	precore.env_global({
+		[root_name] = path,
+	}, true)
+	precore.env_global({
+		[name .. "_DEP"] = precore.subst_global("${" .. root_name .. "}/dep"),
+		[name .. "_BUILD"] = precore.subst_global("${" .. root_name .. "}/build"),
+	}, true)
 end
 
 --[[
@@ -824,13 +889,10 @@ end
 --]]
 precore.make_config("precore.env-common", nil, {
 {global = function()
-	local env = precore.env()
-	if not env["DEP_PATH"] then
-		env["DEP_PATH"] = precore.subst_global("${ROOT}/dep")
-	end
-	if not env["BUILD_PATH"] then
-		env["BUILD_PATH"] = precore.subst_global("${ROOT}/build")
-	end
+	local env = precore.env_global({
+		DEP_PATH = precore.subst_global("${ROOT}/dep"),
+		BUILD_PATH = precore.subst_global("${ROOT}/build"),
+	}, true)
 end},
 {project = function(pc_proj)
 	local env = pc_proj.env
