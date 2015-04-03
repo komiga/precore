@@ -121,7 +121,7 @@ function precore.internal.execute_opt_block(opt_table, scope_kind)
 	end
 end
 
-function precore.internal.execute_table_block(scope, sub_block, scope_kind)
+function precore.internal.execute_table_block(config, scope, sub_block, scope_kind)
 	for name, value in pairs(sub_block) do
 		if name == "option" then
 			if scope_kind == ConfigScopeKind.global then
@@ -129,7 +129,7 @@ function precore.internal.execute_table_block(scope, sub_block, scope_kind)
 			end
 		elseif name == "wd_scoped" then
 			precore.push_wd(value.path)
-			precore.internal.execute_block(scope, value.block, scope_kind)
+			precore.internal.execute_block(config, scope, value.block, scope_kind)
 			precore.pop_wd()
 		elseif
 			name == "global" or
@@ -147,30 +147,32 @@ function precore.internal.execute_table_block(scope, sub_block, scope_kind)
 	end
 end
 
-function precore.internal.execute_block(scope, block, scope_kind)
-	for _, sub_block in pairs(block) do
-		if type(sub_block) == "string" then
-			precore.internal.execute_block_by_name(
-				scope,
-				sub_block,
-				scope_kind
-			)
-		elseif type(sub_block) == "function" then
-			precore.internal.execute_func_block(
-				sub_block,
-				SubBlockFunctionKind.non_global,
-				scope_kind
-			)
-		elseif type(sub_block) == "table" then
-			precore.internal.execute_table_block(
-				scope,
-				sub_block,
-				scope_kind
-			)
-		else
-			error(string.format(
-				"sub-block of type '%s' not expected", type(sub_block)
-			))
+function precore.internal.execute_sub_block(config, scope, sub_block, scope_kind)
+	if type(sub_block) == "string" then
+		precore.internal.execute_block_by_name(scope, sub_block, scope_kind)
+	elseif type(sub_block) == "function" then
+		precore.internal.execute_func_block(
+			sub_block,
+			SubBlockFunctionKind.non_global,
+			scope_kind
+		)
+	elseif type(sub_block) == "table" then
+		precore.internal.execute_table_block(config, scope, sub_block, scope_kind)
+	else
+		error(string.format(
+			"sub-block of type '%s' not expected", type(sub_block)
+		))
+	end
+end
+
+function precore.internal.execute_block(config, scope, block, scope_kind)
+	if config.properties.reverse then
+		for i = #block, 1, -1 do
+			precore.internal.execute_sub_block(config, scope, block[i], scope_kind)
+		end
+	else
+		for _, sub_block in pairs(block) do
+			precore.internal.execute_sub_block(config, scope, sub_block, scope_kind)
 		end
 	end
 end
@@ -193,7 +195,7 @@ function precore.internal.execute_block_by_name(scope, name, scope_kind)
 	end
 	config.properties.__exec_count = config.properties.__exec_count + 1
 	table.insert(scope.applied, scope.pos, name)
-	precore.internal.execute_block(scope, config.block, scope_kind)
+	precore.internal.execute_block(config, scope, config.block, scope_kind)
 	scope.nest_count = scope.nest_count - 1
 end
 
@@ -370,6 +372,10 @@ end
 	- once
 
 		Whether the config should be executed only once.
+
+	- reverse
+
+		Whether the config should be executed in reverse.
 
 	'block' is a table of sub-blocks -- references, functions, and
 	tables -- to apply.
