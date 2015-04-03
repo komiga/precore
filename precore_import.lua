@@ -4,7 +4,7 @@
 	a project to avoid submoduling.
 --]]
 
-function import_precore()
+local function import_precore()
 	local root_path = os.getenv("PRECORE_ROOT")
 	if root_path == nil or #root_path == 0 then
 		error(
