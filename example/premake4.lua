@@ -1,8 +1,6 @@
 
 dofile("../precore_import.lua")
 
-import_precore()
-
 -- Configs can be created before initialization
 
 precore.make_config("example.config", nil, {
