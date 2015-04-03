@@ -544,7 +544,6 @@ end
 
 function precore.internal.env_set(env, add, no_overwrite)
 	assert(add == nil or type(add) == "table")
-	precore.internal.init_guard()
 	if add then
 		for k, v in pairs(add) do
 			assert(type(k) == "string")
@@ -575,6 +574,7 @@ end
 	Add definitions to the global substitution table.
 --]]
 function precore.env_global(add, no_overwrite)
+	precore.internal.init_guard()
 	return precore.internal.env_set(precore.state.env, add, no_overwrite)
 end
 
